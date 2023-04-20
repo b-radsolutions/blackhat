@@ -23,8 +23,8 @@ import os
 
 class client:
     def __init__(self):
-        self.host = socket.gethostname()  # as both code is running on same pc
-        self.port = 5128  # socket server port number
+        self.host = 'localhost'  # as both code is running on same pc
+        self.port = 8001  # socket server port number
         self.rsa_keys = None
         self.client_socket = socket.socket()  # instantiate
         self.premasterSecret = randint(1, 2**128)

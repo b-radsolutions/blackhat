@@ -17,8 +17,8 @@ from utils import prime_handler
 class server:
     def __init__(self):
         print('Initializing Server')
-        self.host = socket.gethostname()
-        self.port = 5128  # initiate port no. above 1024
+        self.host = 'localhost'
+        self.port = 800  # initiate port no. above 1024
         self.server_socket = socket.socket()  # get instance
         self.server_socket.bind((self.host, self.port))  # bind host address and port together
         self.rsa_keys = rsa.keys()  # Auto Generate RSA Keys for Key Sharing
