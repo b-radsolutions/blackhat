@@ -11,6 +11,7 @@ import utils.sha as sha
 import models.packet as packet
 import utils.pallier as pallier
 import utils.rc5 as rc5
+import utils.hmac as hmac
 
 while True:
     # The pretend server keys
@@ -21,14 +22,16 @@ while True:
 
     session_key = None
     """# p, q, u, g, c
-    fake_paillier_keys = pallier.create_config()
+    fake_paillier_keys = pallier.create_config()"""
     # p*q, g
-    real_paillier_keys = None"""
+    real_paillier_keys = None
 
     client_nonce = None
     server_nonce = None
     sessionID = None
 
+    # n, e
+    client_rsa_keys = None
 
     server_conn = socket.create_connection(('localhost', 8000))
     client_conn = socket.create_server(('localhost', 8001))
@@ -54,13 +57,13 @@ while True:
             assert client_nonce is not None and server_nonce is not None and real_rsa_keys is not None
             rsaPow, rsaCipher = str(req_obj["data"]).split(":")
             premastersecret = rsa.decrypt(fake_rsa_keys[4], fake_rsa_keys[0],
-                                            (int(rsaPow), int(rsaCipher)))
+                                          (int(rsaPow), int(rsaCipher)))
             session_key = sha.hash(repr(bitset.from_number(premastersecret))
-                                    + repr(bitset.from_number(server_nonce))
-                                    + repr(bitset.from_number(client_nonce)))
+                                   + repr(bitset.from_number(server_nonce))
+                                   + repr(bitset.from_number(client_nonce)))
             session_key = session_key << (
                 8 - len(format(session_key, 'b')) % 8)
-            print(f"SESSION KEY RETRIEVED: {session_key}")
+            print(f"+++ SESSION KEY RETRIEVED: {session_key}")
             # for now, ignore the paillier and let that go. but we can mitm that too.
             rsaPow, rsaCipher = rsa.encrypt(real_rsa_keys[1], real_rsa_keys[0],
                                             premastersecret)
@@ -72,19 +75,58 @@ while True:
             k_bitset = bitset.from_number(session_key)
             string = rc5.decrypt(k_bitset, op.data, _type=str)
             print(f"Decrypted request: {string}")
-            p_op = packet.unwrap_encrypted_operation(op, session_key, session_key)
+            p_op = packet.unwrap_encrypted_operation(
+                op, session_key, session_key)
             if p_op.id == packet.ProtectedOperationIds.VERIFY:
                 subcontent = rc5.decrypt(k_bitset, p_op.data)
-                print(f"Double-Decrypted request data: {subcontent}")
-            # Unchanged
+                print(f"+++ Double-Decrypted USERNAME/PASSWORD: {subcontent}")
+            elif p_op.id == packet.ProtectedOperationIds.CHALLENGE:
+                subcontent: dict = json.loads(p_op.data)
+                client_rsa_keys = subcontent["keys"]
+                print(f"Client public keys: {client_rsa_keys}")
+            data = p_op.data
+            value = p_op.value
+            # make any changes we want to data & value
+            # ====
+            """
+            if p_op.id == packet.ProtectedOperationIds.DEPOSIT:
+                # replace all deposits with $10
+                data = pallier.encrypt(*real_paillier_keys, 1000)
+            """
+            # ====
+            # Now we rebuild the signature and MAC
+            new_p_op = packet.ProtectedOperation.construct(
+                id=p_op.id, nonce=p_op.nonce, data=data, value=value)
+            new_encrypted_data = rc5.encrypt(
+                bitset.from_number(session_key), new_p_op.json())
+            new_mac = hmac.GenerateHMAC(new_encrypted_data, session_key)
+
+            new_op = packet.Operation.parse_obj({'id': packet.IdTypes.ENCRYPTED,
+                                                 'data': new_encrypted_data,
+                                                 'mac': new_mac})
+            if op.signature is not None:
+                old_encrypted_data = op.data
+                old_hash = sha.hash(old_encrypted_data) >> 32
+                new_hash = sha.hash(new_encrypted_data) >> 32
+                old_sig: tuple[int, int] = op.signature
+                # old_sig[1] = hash(r) ^ old_hash
+                # we can't change hash(r)
+                # but we can do
+                # new_sig[1] = hash(r) ^ new_hash = old_sig[1] ^ old_hash ^ new_hash
+                new_op.signature = (old_sig[0],
+                                    old_sig[1] ^ old_hash ^ new_hash)
+            req = new_op.json().encode()
+            if new_op != op:
+                print(f"Altered: {req}")
         else:
             assert False
         # Alter the request here
         server_conn.send(req)
 
-        if req_obj["id"] == 2 and op.id in [packet.ProtectedOperationIds.DEPOSIT,
-                                            packet.ProtectedOperationIds.WITHDRAW,
-                                            packet.ProtectedOperationIds.FREEZE]:
+        if req_obj["id"] == 2 and p_op.id in [packet.ProtectedOperationIds.DEPOSIT,
+                                              packet.ProtectedOperationIds.WITHDRAW,
+                                              packet.ProtectedOperationIds.FREEZE]:
+            print("----")
             continue
 
         resp = server_conn.recv(4096)
@@ -98,9 +140,9 @@ while True:
             resp = f"1.3|{server_nonce}|{sessionID}|RC5:SHA-1:stream:F:20|SHA-1|Certificate:{fake_rsa_keys[0]}:{fake_rsa_keys[3]}".encode(
             )
         elif req_obj["id"] == 1:
-            """n, g = resp.split("|")
+            n, g = resp.decode().split("|")
             real_paillier_keys = (int(n), int(g))
-            resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
+            """resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
             print(f"Altered: {resp}")"""
             # Can't do this because of client signature
         elif req_obj["id"] == 2:
