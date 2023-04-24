@@ -345,6 +345,8 @@ In detail:
           Pass along the fraudulent Paillier public key.
 \end{enumerate}
 Now that we have the \code{session\_key}, we can use this to encrypt and decrypt RC5, as well as to produce MACs.
+Note that, \textbf{even if} they had a certificate authority, given we can forge digital signatures, we could still impersonate
+the server to the client.
 
 \subsection{User Authentication Phase}
 From this point on, all messages will be of type \code{ENCRYPTED}.
