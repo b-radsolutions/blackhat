@@ -79,7 +79,8 @@ while True:
                 op, session_key, session_key)
             if p_op.id == packet.ProtectedOperationIds.VERIFY:
                 subcontent = rc5.decrypt(k_bitset, p_op.data)
-                print(f"\x1b[1mDouble-Decrypted USERNAME/PASSWORD: {subcontent}\x1b[0m")
+                print(
+                    f"\x1b[1mDouble-Decrypted USERNAME/PASSWORD: {subcontent}\x1b[0m")
             elif p_op.id == packet.ProtectedOperationIds.CHALLENGE:
                 subcontent: dict = json.loads(p_op.data)
                 client_rsa_keys = subcontent["keys"]
@@ -155,7 +156,8 @@ while True:
 
             resp = f"1.3|{server_nonce}|{sessionID}|RC5:SHA-1:stream:F:20|SHA-1|Certificate:{fake_rsa_keys[0]}:{fake_rsa_keys[3]}".encode(
             )
-            print(f"\x1b[1mFake Server RSA Keys: {fake_rsa_keys[0]}:{fake_rsa_keys[3]}\x1b[0m")
+            print(
+                f"\x1b[1mFake Server RSA Keys: {fake_rsa_keys[0]}:{fake_rsa_keys[3]}\x1b[0m")
             print(f"\x2b[2mAltered: {resp}\x1b[0m")
         elif req_obj["id"] == 1:
             n, g = resp.decode().split("|")
@@ -163,7 +165,7 @@ while True:
             print(f"\x1b[1mServer Paillier Keys: {real_paillier_keys}\x1b[0m")
             resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
             print(f"\x1b[1mFake Paillier Keys: {resp}\x1b[0m")
-            print(f"\x2b[2mAltered: {resp}\x1b[0m")
+            print(f"\x1b[2mAltered: {resp}\x1b[0m")
         elif req_obj["id"] == 2:
             resp_obj = json.loads(resp)
             op = packet.Operation.parse_obj(resp_obj)

@@ -89,15 +89,19 @@ A string:
 
 \subsubsection{Potential vulnerabilities}
 \textbf{Prime Nonces} \\
-Since both parties only use prime nonces, the number of possible nonces is significantly decreased. This may make guessing or precomputing nonces easier, and also makes the possibility of nonce reuse much higher. \\
+Since both parties only use prime nonces, the number of possible nonces is significantly decreased.
+This may make guessing or precomputing nonces easier, and also makes the possibility of nonce reuse much higher. \\
 \\
 \textbf{Prime sessionIDs} \\
 This is much less significant than the prime nonces, but may still provide opportunity if the smaller id space causes reuse. \\
 \\
 \textbf{Lack of Certificate Authority} \\
-No verification information is included here to allow the client to verify that the keys actually belong to the server. As ATMs owned by or affiliated with the bank they are connecting to, information could be hard-coded onto the ATM. A simple option would be to just hold the server's permanent public keys. As this server regenerates its RSA keys every time it starts (which may be more realistic than a single set of RSA keys for all bank servers), it could still have those public keys signed by a mock CA that is trusted by the client. 
-We use this for our MITM attacks, specifically \code{attack\_INTERCEPT}.
-% \textbf{TODO: We're going to use this for an attack}
+No verification information is included here to allow the client to verify that the keys actually belong to the server.
+As ATMs owned by or affiliated with the bank they are connecting to, information could be hard-coded onto the ATM.
+A simple option would be to just hold the server's permanent public keys. As this server regenerates its RSA keys every time
+it starts (which may be more realistic than a single set of RSA keys for all bank servers),
+it could still have those public keys signed by a mock CA that is trusted by the client.
+We use this for our Man-in-the-Middle attack.
 
 \subsection{KEYGEN messages}
 These messages seem to be used to communicate for Diffie-Hellman key generation. They come directly after the HELLO messages and do not seem to be used more than once. They allow both parties to generate a session key based on the \texttt{premasterSecret}, \texttt{serverNonce}, and \texttt{clientNonce}.
@@ -124,17 +128,18 @@ In the request's \code{rsaCipher}, the 32 most significant bits of the random in
 While this is not normally an issue, the hash function is SHA-1 which is considered broken.
 Additionally, while we assume this would not be the case in practice, the random integer is smaller than the hash
 length (We cannot assume that the \texttt{premasterSecret} would be larger in practice,
-as then the hash would not beable to mask it). \\
-\textbf{TODO: THIS:} Thus, we may be able to find a limited set of possible values for the random integer
-from the hash in \code{rsaPow}, then encrypt them and compare with \code{rsaCipher}.
-From this, we can find the \texttt{premasterSecret}. \\
+as then the hash would not be able to mask it). While we do not have the computational power to do so,
+it may be possible to narrow down the set of possible values of the random number between the hash and its
+RSA encryption. \\
 \\
 \textbf{Malleable premasterSecret} \\
 Due to being XORed, any of the 128 least significant bits of the request's \code{rsaCipher} may be flipped to
 flip the corresponding bit of the \texttt{premasterSecret} seen by the server.
 
 \subsection{ENCRYPTED message}
-This has message type (id 2) contains all the Protected Data Models as defined by their documentation. They always include a MAC, and requests (never responses) will include a Signature after the user provides RSA keys (should be all but VERIFY \textbf{TODO: ALSO CHALLENGE???}).
+This has message type (id 2) contains all the Protected Data Models as defined by their documentation.
+They always include a MAC, and requests (never responses) will include a Signature after the user provides
+RSA keys (should be all but \code{VERIFY} and sometimes \code{FREEZE}).
 
 \subsection{ENCRYPTED message/VERIFY}
 This has the protection operation id 3 and is used to send the username and password for authentication.
@@ -148,10 +153,13 @@ of at least 8 (testing shows it may be slightly more). The user data is encrypte
 resulting in this part having a net expansion factor of at least 64.
 
 Effectively, this provides (by testing) about 47 characters to be split between the username and password before
-the message becomes too long, causing json decoding to fail. \textbf{TODO: FIGURE OUT IF WE CAN TURN THIS INTO AN ATTACK}
+the message becomes too long, causing json decoding to fail.
+Unfortunately, we were unable to use this to extract or alter any information due to it causing a decoding error upon receipt.
 
 \subsection{ENCRYPTED message/FREEZE}
-I think this might have a big vulnerability? Just freezes whatever username it gets, not necessarily this account's one
+A string: \code{\textit{username}} \\
+Freezes the account of whatever \code{username} is provided.
+We use this for an attack.
 
 \section{Cryptographic Primitives Analysis}
 Here we will analyze the implementation of cryptography and compare them to their general form.
@@ -173,11 +181,23 @@ While perhaps more secure (or perhaps not), full-sized personal RSA parameters w
 to log into an ATM using a debit card, as they would either have to be stored in the card or entered by the user
 (both non-standard behavior that limits compatibility).
 
-Nevertheless, we will work under this system and assume a brute force attack to find secret keys would be intractable.
+Nevertheless, we will work under this system and assume a brute force attack to find secret keys would be intractable. \\
+\\
+They expanded the encryption algorithm to be nondeterministic, by XORing the message with a hash of a random number,
+then encrypt that random number with RSA and attaching it.
+However, this makes the message malleable via XOR and limits message length to the hash length
+(160 bits, though their implimentation further limits it to 128 bits due to RSA key length).
 
 \subsection{Asymmetric Digital Signature}
 They implemented an RSA-based digital signature scheme.
-As detailed \hyperref[sec:signaturebad]{below$_\downarrow$}, we can easily forge a signature under this scheme.
+As detailed \hyperref[sec:signaturebad]{below$_\downarrow$},
+we can easily forge signatures under this scheme. We specify two methods for forging signatures, which require either
+\begin{itemize}
+    \item Having the public key and seeing a single valid signature (without message), or
+    \item Seeing a single valid signature with its corresponding message (without public key)
+\end{itemize}
+Since we typically get the message using the public key, the first option is the one we implement in our attacks.
+Both can be done in constant time, so do not require any brute force.
 
 \pagebreak[3]
 \section{Negative Money Vulnerability}
@@ -261,15 +281,15 @@ the fraudulent ATM could simply choose not to implement the account freeze.
 \subsection{Hostile Account Freezing}
 In addition to the lack of ATM authentication, FREEZE requests include the username of the account to freeze,
 and the server will freeze this account without verifying that the specified account is the same one as this
-current session. As such, the ATM client has the power to freeze any account if a user is logged in, which
-includes unauthenticated fraudulent clients.
+current session. As such, the ATM client has the power to freeze any account, which includes unauthenticated fraudulent clients.
 
 Even more trivially, one can indefinitely (presumably until bank staff review it) freeze anybody's
 account by having one failed login attempt with the target's username on a valid client.
 While this may counteract brute force attacks, it allow malicious actors to easily target individuals wherever they are.
 
 \section{Found Attacks}
-At the end of the day, we found and wrote scripts for 4 unique attacks. They are, in no particuluar order:
+At the end of the day, we found and wrote scripts for 4 unique attacks, in addition to the negative money vulnerability.
+They are, in no particuluar order:
 \begin{enumerate}
     \item \code{attack\_FRAUDCLIENT}
     \item \code{attack\_MITM}
@@ -279,27 +299,27 @@ At the end of the day, we found and wrote scripts for 4 unique attacks. They are
 \subsection{FRAUDCLIENT}
 The logic for freezing of user accounts is all done client-side; simply by commenting out the code that allows for only 3 sign-in attempts, the user of the ATM has unlimited attempts to guess the password. This leads to further attacks, such as a brute-force user password attempt attack. However, as explained later, there are more efficient means of accomplishing the same result.
 This pattern of the client being responsible for things that should be checked server-side has other implications.
-\code{FRAUDCLIENT} abuses the lack of authentication on the client done by the server. 
+\code{FRAUDCLIENT} abuses the lack of authentication on the client done by the server.
 While the client cannot pretend to be another user without further attacks, the client can claim just about anything about the balance of the account.
 For example, the user can deposit as much as they want ot their account without the need to prove anything about their account. Additionally, clients can freeze whoever they want, as shown by our new 5th option to the client.
 
 \subsection{MITM}
-\code{MITM} showcases how, by inserting ourselves between the client and the server, we can fake the server's RSA key-pair to learn the \code{premasterSecret}.
-With knowledge of the \code{premasterSecret}, we can decrypt and inspect all traffic between the client and server. Additionally, as the user credentials are sent in this encrypted channel, we learn the user's login as well. This means we can perfectly impersonate the user, so long as we are watching the traffic while the user account is being created.
-This \code{MITM} attack is very powerful and constitutes a complete break of the security of the ATM. Undetected, we are able to impersonate a user and perform whatever operations we want on the account, even when the user is not online. 
-Additionally, we are able to intercept messages sent to the server and change them to our liking. This attack involves no brute-forcing or complicated analysis, just a simple abuse of the written protocols. This attack is impressive and is explained in detail later in the paper.
+\code{MITM} (Man-in-the-Middle) showcases how, by inserting ourselves between the client and the server, we can fake the server's RSA key-pair to learn the \code{premasterSecret}.
+With knowledge of the \code{premasterSecret}, we can recover the session key, decrypt and alter all traffic in either direction between the client and server. Additionally, as the user credentials are sent in this encrypted channel, we learn the user's login as well. This means we can perfectly impersonate the user, due to the digital signature scheme being easy to forge.
+This \code{MITM} attack is very powerful and constitutes a complete break of the system's security. Undetected, we are able to impersonate a user and perform whatever operations we want on the account, even when the user is not online.
+Additionally, we are able to intercept, read, and alter messages sent to and from the server at will. This attack involves no brute-forcing or complex cryptanalysis, just a simple abuse of the written protocols. This attack is impressive and is explained in detail later in the paper.
 
 \subsection{FREEZE}
 Alluded to in \code{FRAUDCLIENT}, users are able to freeze any user account they want. We can take this a step further; freezing user accounts does not require an authenticated user. All freezing requires is a secure channel, which the server will do with any client that contacts it. While the server does close the connection after a freeze operation is made, nothing stops or rate-limits connections made to the server.
 As a result, \code{FREEZE} is able to quickly shut down user accounts. It starts by freezing the accounts of the us, the authors, and then moves on to freezing random accounts. An account freeze in this system is a permanent shutdown of that account; there is no recovery and this mechanism is available to anyone with a connection.
 
 \subsection{FIRE}
-Earlier in this paper we spoke about the prime number finding algorithm used by both the client and server. This algorithm is very slow and is accessed through a singleton created in the python package file. The server only uses this one singleton to run the algorithm, and if the algorithm is already running, it will not start another invocation. This leads to a simple yet effective denial of service attack on the server.
-By opening a connection with the server, the server kicks off a prime-number finding. This takes anywhere from 1 to 10 seconds, and during that time any other connection requests will fail due to the singleton objec being in use.
+Earlier in this paper we spoke about the original prime number finding algorithm used by both the client and server. This algorithm is very slow and is accessed through a singleton created in the python package file. The server only uses this one singleton to run the algorithm, and if the algorithm is already running, it will not start another invocation. This leads to a simple yet effective denial of service attack on the server.
+By opening a connection with the server, the server kicks off a prime-number finding. This takes anywhere from 1 to 10 seconds, and during that time any other connection requests will fail due to the singleton object being in use.
 This is the attack; no one else can connect to the server. As soon as the connection finishes, we have a second process ready to begin a connection immediately. In practice, this makes the server unusable.
 
 \section{Man-In-The-Middle Attack}
-This Man-In-The-Middle attack allows us to recover the entire session key.
+This Man-in-the-Middle attack allows us to recover the entire session key.
 Due to the lack of authentication of the server, our script can pose to the client as the server,
 using a generated public key, then relay the content to the server.
 While the server does send a 'certificate,' this only provides an RSA public key with no means for it to be authenticated.
