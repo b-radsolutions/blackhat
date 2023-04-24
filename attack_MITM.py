@@ -105,16 +105,10 @@ while True:
                                                  'data': new_encrypted_data,
                                                  'mac': new_mac})
             if op.signature is not None:
-                old_encrypted_data = op.data
-                old_hash = sha.hash(old_encrypted_data) >> 32
                 new_hash = sha.hash(new_encrypted_data) >> 32
-                old_sig: tuple[int, int] = op.signature
-                # old_sig[1] = hash(r) ^ old_hash
-                # we can't change hash(r)
-                # but we can do
-                # new_sig[1] = hash(r) ^ new_hash = old_sig[1] ^ old_hash ^ new_hash
-                new_op.signature = (old_sig[0],
-                                    old_sig[1] ^ old_hash ^ new_hash)
+                r = rsa.rsa_decrypt(client_rsa_keys[1], client_rsa_keys[0], op.signature[0])
+                H_r = sha.hashNC(bitset.from_number(r))
+                new_op.signature = (op.signature[0], H_r ^ new_hash)
             req = new_op.json().encode()
             if new_op != op:
                 print(f"Altered: {req}")
