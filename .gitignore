@@ -3,3 +3,10 @@ venv/
 .idea/
 **/__pycache__/
 .DS_Store
+latex/*.synctex.gz
+latex/*.toc
+latex/*.out
+latex/*.log
+latex/*.fls
+latex/*.fdb_latexmk
+latex/*.aux

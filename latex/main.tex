@@ -39,7 +39,7 @@
 \newpage
 
 \section{Alterations}
-For various reasons, we had to make a few minor alterations to the provided code. These did not change the behavior of the project.
+For various reasons, we had to make a few minor alterations to the provided code. For the most part, these did not change the behavior of the project. We did make major alternations to the prime number-finder, which we elaborate on later. It will be explicit where we change behavior.
 
 \subsection{Multiprocessing Issues}
 The program did not immediately function on my machine due to interaction between Python multiprocessing's forking and TCP sockets.
@@ -95,7 +95,9 @@ Since both parties only use prime nonces, the number of possible nonces is signi
 This is much less significant than the prime nonces, but may still provide opportunity if the smaller id space causes reuse. \\
 \\
 \textbf{Lack of Certificate Authority} \\
-No verification information is included here to allow the client to verify that the keys actually belong to the server. As ATMs owned by or affiliated with the bank they are connecting to, information could be hard-coded onto the ATM. A simple option would be to just hold the server's permanent public keys. As this server regenerates its RSA keys every time it starts (which may be more realistic than a single set of RSA keys for all bank servers), it could still have those public keys signed by a mock CA that is trusted by the client. \textbf{TODO: We're going to use this for an attack}
+No verification information is included here to allow the client to verify that the keys actually belong to the server. As ATMs owned by or affiliated with the bank they are connecting to, information could be hard-coded onto the ATM. A simple option would be to just hold the server's permanent public keys. As this server regenerates its RSA keys every time it starts (which may be more realistic than a single set of RSA keys for all bank servers), it could still have those public keys signed by a mock CA that is trusted by the client. 
+We use this for our MITM attacks, specifically \code{attack\_INTERCEPT}.
+% \textbf{TODO: We're going to use this for an attack}
 
 \subsection{KEYGEN messages}
 These messages seem to be used to communicate for Diffie-Hellman key generation. They come directly after the HELLO messages and do not seem to be used more than once. They allow both parties to generate a session key based on the \texttt{premasterSecret}, \texttt{serverNonce}, and \texttt{clientNonce}.
@@ -246,7 +248,7 @@ add as much money to their account as they would like, without actually supplyin
 While less useful than a fake deposit since a fraudulent ATM can't give the user physical cash,
 we can still use this to WITHDRAW unlimited money from an account.
 As mentioned above, one cannot WITHDRAW more money than exists in the account.
-However, this is only checked by the ATM, not the server \textbf{TODO: double check this is true}.
+However, this is only checked by the ATM, not the server.
 Since RSA keys authenticate the user, not the ATM, a user could use an altered version of the ATM
 that does not make this check. This would produce a similar effect to the negative deposit discussed above.
 
@@ -265,6 +267,36 @@ includes unauthenticated fraudulent clients.
 Even more trivially, one can indefinitely (presumably until bank staff review it) freeze anybody's
 account by having one failed login attempt with the target's username on a valid client.
 While this may counteract brute force attacks, it allow malicious actors to easily target individuals wherever they are.
+
+\section{Found Attacks}
+At the end of the day, we found and wrote scripts for 4 unique attacks. They are, in no particuluar order:
+\begin{enumerate}
+    \item \code{attack\_FRAUDCLIENT}
+    \item \code{attack\_MITM}
+    \item \code{attack\_FREEZE}
+    \item \code{attack\_FIRE}
+\end{enumerate}
+\subsection{FRAUDCLIENT}
+The logic for freezing of user accounts is all done client-side; simply by commenting out the code that allows for only 3 sign-in attempts, the user of the ATM has unlimited attempts to guess the password. This leads to further attacks, such as a brute-force user password attempt attack. However, as explained later, there are more efficient means of accomplishing the same result.
+This pattern of the client being responsible for things that should be checked server-side has other implications.
+\code{FRAUDCLIENT} abuses the lack of authentication on the client done by the server. 
+While the client cannot pretend to be another user without further attacks, the client can claim just about anything about the balance of the account.
+For example, the user can deposit as much as they want ot their account without the need to prove anything about their account. Additionally, clients can freeze whoever they want, as shown by our new 5th option to the client.
+
+\subsection{MITM}
+\code{MITM} showcases how, by inserting ourselves between the client and the server, we can fake the server's RSA key-pair to learn the \code{premasterSecret}.
+With knowledge of the \code{premasterSecret}, we can decrypt and inspect all traffic between the client and server. Additionally, as the user credentials are sent in this encrypted channel, we learn the user's login as well. This means we can perfectly impersonate the user, so long as we are watching the traffic while the user account is being created.
+This \code{MITM} attack is very powerful and constitutes a complete break of the security of the ATM. Undetected, we are able to impersonate a user and perform whatever operations we want on the account, even when the user is not online. 
+Additionally, we are able to intercept messages sent to the server and change them to our liking. This attack involves no brute-forcing or complicated analysis, just a simple abuse of the written protocols. This attack is impressive and is explained in detail later in the paper.
+
+\subsection{FREEZE}
+Alluded to in \code{FRAUDCLIENT}, users are able to freeze any user account they want. We can take this a step further; freezing user accounts does not require an authenticated user. All freezing requires is a secure channel, which the server will do with any client that contacts it. While the server does close the connection after a freeze operation is made, nothing stops or rate-limits connections made to the server.
+As a result, \code{FREEZE} is able to quickly shut down user accounts. It starts by freezing the accounts of the us, the authors, and then moves on to freezing random accounts. An account freeze in this system is a permanent shutdown of that account; there is no recovery and this mechanism is available to anyone with a connection.
+
+\subsection{FIRE}
+Earlier in this paper we spoke about the prime number finding algorithm used by both the client and server. This algorithm is very slow and is accessed through a singleton created in the python package file. The server only uses this one singleton to run the algorithm, and if the algorithm is already running, it will not start another invocation. This leads to a simple yet effective denial of service attack on the server.
+By opening a connection with the server, the server kicks off a prime-number finding. This takes anywhere from 1 to 10 seconds, and during that time any other connection requests will fail due to the singleton objec being in use.
+This is the attack; no one else can connect to the server. As soon as the connection finishes, we have a second process ready to begin a connection immediately. In practice, this makes the server unusable.
 
 \section{Man-In-The-Middle Attack}
 This Man-In-The-Middle attack allows us to recover the entire session key.
@@ -376,13 +408,14 @@ Session keys are generated using the following parameters:
 \end{itemize}
 As discussed earlier, the usage of only prime nonces may pose a vulnerability due to it significantly
 decreasing the number of possible nonces. However, due to them being sent in cleartext, this may not be so useful. \\
-Also note that using a man-in-the-middle attack, the \code{premastersecret} can be retrieved,
-???but as it was already discussed, we will not use that strategy in this cryptanalysis???maybe?. \\
+Also note that using a man-in-the-middle attack, the \code{premastersecret} can be retrieved.
+% ???but as it was already discussed, we will not use that strategy in this cryptanalysis???maybe?. \\
 \\
 \textbf{TODO: I BET THERE'S A LOT OF PROBABILITY AND MATH CRYPTANALYSIS HERE} \\
 notes: key both for rc5 and hmac (same key) is produced by hashing the concatenated binary strings (so "01010101...")
 of the premaster secret, server nonce, and client nonce then it is left shifted until it aligns with 8 bits.
 I think this means that the session key will be a multiple of 8 bits (so a full number of bytes) but the leftmost
 bit will always be 1, and any shifts will result in the rightmost bits being 0.
+
 
 \end{document}
