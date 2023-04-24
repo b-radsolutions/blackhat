@@ -1,4 +1,5 @@
 import utils.server as s
 
-SERVER = s.server()
-SERVER.listen()
+if __name__ == "__main__":
+    SERVER = s.server()
+    SERVER.listen()

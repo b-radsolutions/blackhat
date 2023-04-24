@@ -2,9 +2,9 @@ import utils.client as c
 import os
 import time
 
-
-CLIENT = c.client()
-CLIENT.init()
+if __name__ == "__main__":
+    CLIENT = c.client()
+    CLIENT.init()
 
 print("Who are you? ", end="")
 username = input("Username:").strip()
