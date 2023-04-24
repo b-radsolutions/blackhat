@@ -394,7 +394,8 @@ For requests (e.g. \code{DEPOSIT} and \code{WITHDRAW}), we can do the following:
               \item Calculate $H_r = sha1(r)$
               \item Then $\code{new\_signature} = (y_1, H_r \oplus \code{new\_hash})$
           \end{enumerate}
-          And replace the request's \code{signature} with the \code{new\_signature}.
+          And replace the request's \code{signature} with the \code{new\_signature}. \\
+          Alternately, this and another strategy are detailed below, and may be more useful in some cases.
 \end{enumerate}
 Note the strategy we use above for altering the digital signature.
 This works because the implemented signature scheme is malleable.
@@ -417,7 +418,7 @@ Verifying with public key $e, N$, message $m$, and signature $(y_1, y_2)$:
 \label{sec:signaturebad}
 However, as noted above, this scheme is flawed since we can change the message then alter the signature by recovering
 $r$ and $H_r$ from $y_1$ using the client's public key in the same manner as during verification, then calculating the new
-\[y_2 = m_{new} \oplus H_r\]
+\[y_{2_{new}} = m_{new} \oplus H_r\]
 Alternately, if we don't have the signer's public key (which we should), we can do the following:
 \[y_{2_{new}} = m_{new} \oplus H_r = m_{new} \oplus m_{old} \oplus m_{old} \oplus H_r = m_{new} \oplus m_{old} \oplus y_{2_{old}}\]
 We can also create new messages rather than altering them by reusing previous values of $(y_1, y_2)$ or $r$ and $H_r$, as reuse is not checked for these.
