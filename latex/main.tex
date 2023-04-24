@@ -307,7 +307,8 @@ While the server does send a 'certificate,' this only provides an RSA public key
 In detail:
 \subsection{Session Handshake Phase}
 \begin{enumerate}
-    \item Generate a new RSA keypair. Call this the fraudulent keypair.
+    \item Generate a new RSA keypair. Call this the fraudulent RSA keypair. \\
+          Also, generate a fraudulent Paillier keypair.
     \item Gain control of the channel between the server and client. This means the attacker can read and alter packets in either direction.
     \item Intercept client \code{HELLO} and save the plaintext \code{client\_nonce} and \code{sessionID}. \\
           Pass along unaltered.
@@ -317,7 +318,8 @@ In detail:
           extract the \code{premastersecret} and calculate the \code{session\_key} from
           \code{premastersecret}, \code{server\_nonce}, and \code{client\_nonce}. \\
           Pass along the message, but re-encrypt \code{premastersecret} using the real public key instead of the fraudulent key.
-    \item Intercept server \code{KEYGEN} and save the server's Paillier public key. \textbf{TODO: CRACK PAILLIER IMPLEMENTATION}
+    \item Intercept server \code{KEYGEN} and save the server's Paillier public key.
+          Pass along the fraudulent Paillier public key.
 \end{enumerate}
 Now that we have the \code{session\_key}, we can use this to encrypt and decrypt RC5, as well as to produce MACs.
 
@@ -355,7 +357,10 @@ For requests (e.g. \code{DEPOSIT} and \code{WITHDRAW}), we can do the following:
               \item \code{data}: The raw data transmitted by the request.
               \item \code{value}: Another store of raw data transmitted by the request used by some request types.
           \end{itemize}
-    \item Read and/or alter \code{protected\_op.data} and \code{protected\_op.value} at will.
+    \item Read and/or alter \code{protected\_op.data} and \code{protected\_op.value} at will. \\
+          If altering Paillier-encrypted data (e.g. \code{DEPOSIT} or \code{WITHDRAW} amounts),
+          Decrypt with the fraudulent Paillier private key, read/alter as necessary,
+          then re-encrypt with the real Paillier public key.
     \item Re-encrypt the modified \code{protected\_op} and put it back in the request.
     \item Using the \code{session\_key}, calculate and add the new MAC (replacing the old one).
     \item Calculate the \code{new\_signature} from \code{new\_encrypted\_data}, old signature $(y_1, y_2)$,
@@ -395,7 +400,7 @@ Alternately, if we don't have the signer's public key (which we should), we can 
 We can also create new messages rather than altering them by reusing previous values of $(y_1, y_2)$ or $r$ and $H_r$, as reuse is not checked for these.
 
 \subsection{Encrypted Responses}
-Most encrypted responses after the user is authenticated (i.e. \code{DEPOSIT}, \code{WITHDRAW}, and \code{FREEZE}) do not have a response.
+Most encrypted responses after the user is authenticated (i.e. \code{DEPOSIT}, \code{WITHDRAW}, and potentially \code{FREEZE}) do not have a response.
 Nevertheless, we can alter the responses that do come through (e.g. \code{CHECK}). \\
 This operation is identical to the process for reading and altering requests, except that the signature should be left as \code{null}.
 
