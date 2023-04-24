@@ -1,11 +1,17 @@
 \documentclass{article}
-
-\usepackage{amsmath}
-\usepackage{tcolorbox}
+\usepackage{graphicx}
 \usepackage{verbatim}
+\usepackage{tcolorbox}
+\usepackage{amsmath}
 \usepackage{hyperref}
 \usepackage{fontawesome}
-\usepackage{xstring}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+\urlstyle{same}
 
 \definecolor{codebackground}{rgb}{0.95,0.95,0.95}
 \newcommand{\code}[1]{\tcbox[
@@ -14,30 +20,22 @@
     colframe=white, boxrule=0pt,
     top=0pt, bottom=0pt, left=0pt, right=0pt
 ]{\texttt{#1}}}
-
-\hypersetup{
-    colorlinks=true,
-    linkcolor=black,
-    urlcolor=blue
-}
-\urlstyle{same}
-% \linkpy{shared/port} -> \href{file:shared/port.py}{shared.port}
-\newcommand{\linkpy}[1]{\href{file:#1.py}{\StrSubstitute{#1}{/}{.}}}
+\newcommand{\codebox}[1]{\begin{tcolorbox}[
+    colback=codebackground, boxsep=2pt,
+    colframe=white, boxrule=0pt,
+    top=0pt, bottom=0pt, left=0pt, right=0pt
+]\texttt{#1}
+\end{tcolorbox}}
 
 \title{CSCI4230 Blackhat Analysis of \\ Ian Conrad and Frank Johnson's Project}
 \author{Aidan McHugh, Kai Orita, and Bradley Presier}
 \date{April 24th 2023}
 
 \begin{document}
-\begin{titlepage}
-    \maketitle
-    \begin{center}
-        \vspace*{30em}Note: If links do not work, try opening this file from its directory using Edge or Chrome.
-    \end{center}
-\end{titlepage}
 
+\maketitle
+\newpage
 \tableofcontents
-
 \newpage
 
 \section{Alterations}
@@ -50,10 +48,15 @@ However, this issue was quickly resolved by adding
 to the main files of both the server (\code{SERVER\_main.py}) and client (\code{CLIENT\_main.py}).
 
 \subsection{Address/Port Changes}
-In order to simplify intercepting encrypted messages, we changed the address that the sockets would connect on. The same could also be achieved with packet sniffing tools, but for ease of use we created a relay script through which packets pass. This does not provide any view of the internal state except what is already sent out into the internet.
+In order to simplify intercepting encrypted messages, we changed the address that the sockets would connect on.
+The same could also be achieved with packet sniffing tools,
+but for ease of use we created a relay script through which packets pass.
+This does not provide any view of the internal state except what is already sent out into the internet.
 
 \subsection{Prime Number Finding Optimization}
-Copied prime number-finding code from our project, resulting in a speedup 700x. This provides no alteration to the behavior, but allowed us much faster load times. This additionally allowed us to the \texttt{multiprocessing} module, making the Multiprocessing Issues changes redundant.
+Copied prime number-finding code from our project, resulting in a speedup 700x.
+This provides no alteration to the behavior, but allowed us much faster load times.
+This additionally allowed us to the \texttt{multiprocessing} module, making the Multiprocessing Issues changes redundant.
 
 \pagebreak[3]
 \section{Message Organization}
@@ -115,11 +118,18 @@ A string: \code{\textit{paillier\_n}|\textit{paillier\_g}}
 
 \subsubsection{Potential Vulnerabilities}
 \textbf{Partial Hash Exposure with SHA-1} \\
-In the request's \code{rsaCipher}, the 32 most significant bits of the random integer are directly exposed. While this is not normally an issue, the hash function is SHA-1 which is considered broken. Additionally, while we assume this would not be the case in practice, the random integer is smaller than the hash length (We cannot assume that the \texttt{premasterSecret} would be larger in practice, as then the hash would not be able to mask it). \\
-\textbf{TODO: THIS:} Thus, we may be able to find a limited set of possible values for the random integer from the hash in \code{rsaPow}, then encrypt them and compare with \code{rsaCipher}. From this, we can find the \texttt{premasterSecret}. \\
+In the request's \code{rsaCipher}, the 32 most significant bits of the random integer are directly exposed.
+While this is not normally an issue, the hash function is SHA-1 which is considered broken.
+Additionally, while we assume this would not be the case in practice, the random integer is smaller than the hash
+length (We cannot assume that the \texttt{premasterSecret} would be larger in practice,
+as then the hash would not beable to mask it). \\
+\textbf{TODO: THIS:} Thus, we may be able to find a limited set of possible values for the random integer
+from the hash in \code{rsaPow}, then encrypt them and compare with \code{rsaCipher}.
+From this, we can find the \texttt{premasterSecret}. \\
 \\
 \textbf{Malleable premasterSecret} \\
-Due to being XORed, any of the 128 least significant bits of the request's \code{rsaCipher} may be flipped to flip the corresponding bit of the \texttt{premasterSecret} seen by the server.
+Due to being XORed, any of the 128 least significant bits of the request's \code{rsaCipher} may be flipped to
+flip the corresponding bit of the \texttt{premasterSecret} seen by the server.
 
 \subsection{ENCRYPTED message}
 This has message type (id 2) contains all the Protected Data Models as defined by their documentation. They always include a MAC, and requests (never responses) will include a Signature after the user provides RSA keys (should be all but VERIFY \textbf{TODO: ALSO CHALLENGE???}).
@@ -129,9 +139,14 @@ This has the protection operation id 3 and is used to send the username and pass
 
 \subsubsection{Potential Vulnerabilities}
 \textbf{Unbounded Content Length} \\
-The client takes the username and password as-is, conatenates with a \code{/} character between, then encrypts and sends. However, the maximum supported length of a packet here is 4096 bytes, and the storage of all encrypted data as a string of \code{1}s and \code{0}s effectively causes an expansion factor of at least 8 (testing shows it may be slightly more). The user data is encrypted again within the main encrypted data, resulting in this part having a net expansion factor of at least 64.
+The client takes the username and password as-is, conatenates with a \code{/} character between, then encrypts and sends.
+However, the maximum supported length of a packet here is 4096 bytes,
+and the storage of all encrypted data as a string of \code{1}s and \code{0}s effectively causes an expansion factor
+of at least 8 (testing shows it may be slightly more). The user data is encrypted again within the main encrypted data,
+resulting in this part having a net expansion factor of at least 64.
 
-Effectively, this provides (by testing) about 47 characters to be split between the username and password before the message becomes too long, causing json decoding to fail. \textbf{TODO: FIGURE OUT IF WE CAN TURN THIS INTO AN ATTACK}
+Effectively, this provides (by testing) about 47 characters to be split between the username and password before
+the message becomes too long, causing json decoding to fail. \textbf{TODO: FIGURE OUT IF WE CAN TURN THIS INTO AN ATTACK}
 
 \subsection{ENCRYPTED message/FREEZE}
 I think this might have a big vulnerability? Just freezes whatever username it gets, not necessarily this account's one
@@ -148,9 +163,19 @@ They implemented HMAC. While they use the aforementioned SHA-1, we will not repe
 They chose RC5 to implement. The implementation seems to generalize the parameters, but they specify that they use 20 rounds and 16-bit words.
 
 \subsection{Asymmetric Cipher}
-They chose RSA to implement. They use 64-bit primes for $p,q$. While we might typically assume that larger values would be used in practice and this choice was merely for the sake of speed in this sample system, larger primes would still leave an issue: each user needs to retain their own RSA parameters $(N, p, q, e, d)$, and the server must retain $(N, e)$ for each user. While perhaps more secure (or perhaps not), full-sized personal RSA parameters would cause issues when attempting to log into an ATM using a debit card, as they would either have to be stored in the card or entered by the user (both non-standard behavior that limits compatibility).
+They chose RSA to implement. They use 64-bit primes for $p,q$.
+While we might typically assume that larger values would be used in practice and this choice was merely for
+the sake of speed in this sample system, larger primes would still leave an issue:
+each user needs to retain their own RSA parameters $(N, p, q, e, d)$, and the server must retain $(N, e)$ for each user.
+While perhaps more secure (or perhaps not), full-sized personal RSA parameters would cause issues when attempting
+to log into an ATM using a debit card, as they would either have to be stored in the card or entered by the user
+(both non-standard behavior that limits compatibility).
 
 Nevertheless, we will work under this system and assume a brute force attack to find secret keys would be intractable.
+
+\subsection{Asymmetric Digital Signature}
+They implemented an RSA-based digital signature scheme.
+As detailed \hyperref[sec:signaturebad]{below$_\downarrow$}, we can easily forge a signature under this scheme.
 
 \pagebreak[3]
 \section{Negative Money Vulnerability}
@@ -159,64 +184,96 @@ These attacks require no control of the server or client, nor the communication 
 \\
 After signing in, one can do the following (excludes repeated lines):
 \codebox{Welcome kai \\
-What would you like to do today? \\
-1. Deposit Money \\
-2. Check Balance \\
-3. Withdraw Money \\
-4. Save and Log out of my Account \\
-How are we helping you today?2 \\
-Your current balance is 0.0 \\
-$[\ldots]$ \\
-How are we helping you today?1 \\
-How much money would you like to deposit? \\
-USD (truncated to 2 decimals): 100 \\
-$[\ldots]$ \\
-How are we helping you today?1 \\
-How much money would you like to deposit? \\
-USD (truncated to 2 decimals): -10 \\
-$[\ldots]$ \\
-How are we helping you today?2 \\
-Your current balance is 90.0}
-Additionally, this produces an even more significant vulnerability when in combination with the communication mode with the server. Namely, the amount sent is encrypted with Paillier, and is thus operated under modulo. Due to a lack of checks, depositing negative money wraps around to be the additive inverse of the number (so $-2\text{ mod } 20 = 18$). \\
-While one cannot withdraw more money than exists in the account, they can still deposit the corresponding negative amount of money (mod n).
+    What would you like to do today? \\
+    1. Deposit Money \\
+    2. Check Balance \\
+    3. Withdraw Money \\
+    4. Save and Log out of my Account \\
+    How are we helping you today?2 \\
+    Your current balance is 0.0 \\
+    $[\ldots]$ \\
+    How are we helping you today?1 \\
+    How much money would you like to deposit? \\
+    USD (truncated to 2 decimals): 100 \\
+    $[\ldots]$ \\
+    How are we helping you today?1 \\
+    How much money would you like to deposit? \\
+    USD (truncated to 2 decimals): -10 \\
+    $[\ldots]$ \\
+    How are we helping you today?2 \\
+    Your current balance is 90.0}
+Additionally, this produces an even more significant vulnerability when in combination with
+the communication mode with the server. Namely, the amount sent is encrypted with Paillier,
+and is thus operated under modulo. Due to a lack of checks, depositing negative money wraps around to be
+the additive inverse of the number (so $-2\text{ mod } 20 = 18$). \\
+While one cannot withdraw more money than exists in the account,
+they can still deposit the corresponding negative amount of money (mod n).
 
 Continuing from the above block,
 \codebox{$[\ldots]$ \\
-How are we helping you today?1 \\
-How much money would you like to deposit? \\
-USD (truncated to 2 decimals): -100 \\
-$[\ldots]$ \\
-How are we helping you today?2 \\
-Your current balance is 1996616118896.61
+    How are we helping you today?1 \\
+    How much money would you like to deposit? \\
+    USD (truncated to 2 decimals): -100 \\
+    $[\ldots]$ \\
+    How are we helping you today?2 \\
+    Your current balance is 1996616118896.61
 }
 And thus, we have nearly 2 trillion dollars. \\
 \\
-Interestingly, this also allows us to discover the value $n$ used in Paillier encryption, though this is not so much a vulnerability due to it being part of the public key. Using the raw values in cents, $n = 10000 + 199661611889661 = 199661611899661$
+Interestingly, this also allows us to discover the value $n$ used in Paillier encryption,
+though this is not so much a vulnerability due to it being part of the public key.
+Using the raw values in cents, $n = 10000 + 199661611889661 = 199661611899661$
 
 \section{ATM Authentication Vulnerabilities}
-These rely upon the fact that while the user is authenticated with username, password, and a full set of RSA keys, the ATM client itself is never authenticated. This means that any user who can communicate with the server endpoint can act with all the powers provided to an ATM and its user.
+These rely upon the fact that while the user is authenticated with username, password, and a full set of RSA keys,
+the ATM client itself is never authenticated.
+This means that any user who can communicate with the server endpoint can act with all the powers provided to an ATM and its user.
 
-This operates under the natural view of this project in which the server, client (ATM), and user are three separate entities, none of which is initially known to the others as authentic. With a valid client certificate, the server could authenticate that the client is controlled by the bank and is presumably running its software (though it would still be best to make relevant checks server-side as well). However, since client authentication is not included here, the server cannot verify that the client is not controlled by the user, which can be exploited. Note that under this model, even if both the server and client are controlled by the bank, the channel between them may not be.
+This operates under the natural view of this project in which the server, client (ATM),
+and user are three separate entities, none of which is initially known to the others as authentic.
+With a valid client certificate, the server could authenticate that the client is controlled by the bank and is
+presumably running its software (though it would still be best to make relevant checks server-side as well).
+However, since client authentication is not included here, the server cannot verify that the client is not
+controlled by the user, which can be exploited. Note that under this model, even if both the server and
+client are controlled by the bank, the channel between them may not be.
 
 \subsection{Fraudulent Deposits}
-A simple example of this is that, with no authenticated ATM, there is not necessarily a trusted machine to accept physical cash for deposit. As such, an attacker can send unlimited DEPOSIT messages to the bank to add as much money to their account as they would like, without actually supplying the corresponding amount of cash.
+A simple example of this is that, with no authenticated ATM, there is not necessarily a trusted machine
+to accept physical cash for deposit. As such, an attacker can send unlimited DEPOSIT messages to the bank to
+add as much money to their account as they would like, without actually supplying the corresponding amount of cash.
 
 \subsection{Unlimited Withdrawal}
-While less useful than a fake deposit since a fraudulent ATM can't give the user physical cash, we can still use this to WITHDRAW unlimited money from an account. As mentioned above, one cannot WITHDRAW more money than exists in the account. However, this is only checked by the ATM, not the server \textbf{TODO: double check this is true}. Since RSA keys authenticate the user, not the ATM, a user could use an altered version of the ATM that does not make this check. This would produce a similar effect to the negative deposit discussed above.
+While less useful than a fake deposit since a fraudulent ATM can't give the user physical cash,
+we can still use this to WITHDRAW unlimited money from an account.
+As mentioned above, one cannot WITHDRAW more money than exists in the account.
+However, this is only checked by the ATM, not the server \textbf{TODO: double check this is true}.
+Since RSA keys authenticate the user, not the ATM, a user could use an altered version of the ATM
+that does not make this check. This would produce a similar effect to the negative deposit discussed above.
 
 \subsection{Circumventing Account Freeze}
-The login attempt limit is managed entirely by the client ATM. Thus, a fraudulent ATM could brute force (or implement other attacks that require several login attempts) without requesting an account freeze. As mentioned, due to the machine itself not being authenticated, the fraudulent ATM could simply choose not to implement the account freeze.
+The login attempt limit is managed entirely by the client ATM.
+Thus, a fraudulent ATM could brute force (or implement other attacks that require several login attempts)
+without requesting an account freeze. As mentioned, due to the machine itself not being authenticated,
+the fraudulent ATM could simply choose not to implement the account freeze.
 
 \subsection{Hostile Account Freezing}
-In addition to the lack of ATM authentication, FREEZE requests include the username of the account to freeze, and the server will freeze this account without verifying that the specified account is the same one as this current session. As such, the ATM client has the power to freeze any account if a user is logged in, which includes unauthenticated fraudulent clients.
+In addition to the lack of ATM authentication, FREEZE requests include the username of the account to freeze,
+and the server will freeze this account without verifying that the specified account is the same one as this
+current session. As such, the ATM client has the power to freeze any account if a user is logged in, which
+includes unauthenticated fraudulent clients.
 
-Even more trivially, one can indefinitely (presumably until bank staff review it) freeze anybody's account by having one failed login attempt with the target's username on a valid client. While this may counteract brute force attacks, it allow malicious actors to easily target individuals wherever they are.
+Even more trivially, one can indefinitely (presumably until bank staff review it) freeze anybody's
+account by having one failed login attempt with the target's username on a valid client.
+While this may counteract brute force attacks, it allow malicious actors to easily target individuals wherever they are.
 
-\section{Basic Man-In-The-Middle Attack}
-This simple Man-In-The-Middle attack allows us to recover the entire session key.
-Due to the lack of authentication of the server, our script can pose to the client as the server, using a generated public key, then relay the content to the server. While the server does send a 'certificate,' this only provides an RSA public key with no means for it to be authenticated.
+\section{Man-In-The-Middle Attack}
+This Man-In-The-Middle attack allows us to recover the entire session key.
+Due to the lack of authentication of the server, our script can pose to the client as the server,
+using a generated public key, then relay the content to the server.
+While the server does send a 'certificate,' this only provides an RSA public key with no means for it to be authenticated.
 
 In detail:
+\subsection{Session Handshake Phase}
 \begin{enumerate}
     \item Generate a new RSA keypair. Call this the fraudulent keypair.
     \item Gain control of the channel between the server and client. This means the attacker can read and alter packets in either direction.
@@ -224,11 +281,91 @@ In detail:
           Pass along unaltered.
     \item Intercept server \code{HELLO} and save the plaintext \code{server\_nonce}, along with the server's RSA public key. \\
           Pass along the message, but replace the server's public key with the attacker's fraudulent public key.
-    \item Intercept client \code{KEYGEN}. Using the fraudulent private key, extract the \code{premastersecret} and calculate the \code{session\_key} from \code{premastersecret}, \code{server\_nonce}, and \code{client\_nonce}. \\
+    \item Intercept client \code{KEYGEN}. Using the fraudulent RSA private key,
+          extract the \code{premastersecret} and calculate the \code{session\_key} from
+          \code{premastersecret}, \code{server\_nonce}, and \code{client\_nonce}. \\
           Pass along the message, but re-encrypt \code{premastersecret} using the real public key instead of the fraudulent key.
-    \item Ignore server \code{KEYGEN}. \textbf{TODO: CRACK PAILLIER IMPLEMENTATION}
+    \item Intercept server \code{KEYGEN} and save the server's Paillier public key. \textbf{TODO: CRACK PAILLIER IMPLEMENTATION}
 \end{enumerate}
-Now that we have the \code{session\_key}, we can use this to encrypt and decrypt RC5, as well as to produce MACs. However, this does not provide us with the user's private key for digital signatures (client messages may contain signatures, but server messages never do), nor does it provide us with the Paillier private keys \textbf{TODO: YOU KNOW THE DRILL PAILLIER} for \textbf{STUFF}. This means that while we can forge messages from the server, we do not yet have the capability to forge messages from the client/user.
+Now that we have the \code{session\_key}, we can use this to encrypt and decrypt RC5, as well as to produce MACs.
+
+\subsection{User Authentication Phase}
+From this point on, all messages will be of type \code{ENCRYPTED}.
+For each of these, we can intercept each message and use the \code{session\_key} with RC5 to decrypt the \code{data} field.
+Call this decrypted data \code{protected\_op}. \\
+The following is the initial sequence of user login:
+\begin{enumerate}
+    \item Intercept protected \code{VERIFY} request.
+          Decrypt its \code{data} field using RC5 and the \code{session\_key}.
+          We now know the username and password.
+    \item Ignore protected \code{VERIFY} response.
+    \item Intercept protected \code{CHALLENGE} request.
+          Save the \code{keys} field as the client's public RSA keys.
+    \item Ignore protected \code{CHALLENGE} response.
+\end{enumerate}
+After this, only \code{DEPOSIT}, \code{WITHDRAW}, \code{CHECK} messages will be sent by an unaltered client.
+We can read and alter any of these messages.
+
+\subsection{Encrypted Requests}
+For requests (e.g. \code{DEPOSIT} and \code{WITHDRAW}), we can do the following:
+\begin{enumerate}
+    \item Intercept request. This will contain the following fields:
+          \begin{itemize}
+              \item \code{id}: Will always be \code{2}, representing \code{ENCRYPTED}.
+              \item \code{data}: This is the encrypted \code{protected\_op}.
+              \item \code{mac}: This is a MAC of \code{data}.
+              \item \code{signature}: This is a digital signature of \code{data} using the client's RSA keys.
+          \end{itemize}
+    \item Decrypt \code{protected\_op}. This will contain the following fields:
+          \begin{itemize}
+              \item \code{id}: The Protected Operation ID (e.g. \code{DEPOSIT} or \code{CHECK}).
+              \item \code{nonce}: A random number.
+              \item \code{data}: The raw data transmitted by the request.
+              \item \code{value}: Another store of raw data transmitted by the request used by some request types.
+          \end{itemize}
+    \item Read and/or alter \code{protected\_op.data} and \code{protected\_op.value} at will.
+    \item Re-encrypt the modified \code{protected\_op} and put it back in the request.
+    \item Using the \code{session\_key}, calculate and add the new MAC (replacing the old one).
+    \item Calculate the \code{new\_signature} from \code{new\_encrypted\_data}, old signature $(y_1, y_2)$,
+          and the client's public key $e, N$
+          \begin{enumerate}
+              \item $\code{new\_hash} = sha1(\code{new\_encrypted\_data}) >> 32$
+              \item Recover $r = y_1^e\text{ mod }N$
+              \item Calculate $H_r = sha1(r)$
+              \item Then $\code{new\_signature} = (y_1, H_r \oplus \code{new\_hash})$
+          \end{enumerate}
+          And replace the request's \code{signature} with the \code{new\_signature}.
+\end{enumerate}
+Note the strategy we use above for altering the digital signature.
+This works because the implemented signature scheme is malleable.
+Note that this scheme is generally used with a hash as the message,
+since it is limited to the size of $H_r$ (which is also a hash). \\
+The following is how the digital signature scheme works: \\
+Signing using private key $d, N$ and message $m$:
+\begin{enumerate}
+    \item Generate a random $0 \leq r < N$
+    \item Let $H_r = sha1(r)$
+    \item Return $(r^d\text{ mod }N, m \oplus H_r)$
+\end{enumerate}
+Verifying with public key $e, N$, message $m$, and signature $(y_1, y_2)$:
+\begin{enumerate}
+    \item Recover $r = y_1^e\text{ mod }N$
+    \item Find $H_r = sha1(r)$
+    \item Check that $m == H_r \oplus y_2$
+\end{enumerate}
+\subsection*{}
+\label{sec:signaturebad}
+However, as noted above, this scheme is flawed since we can change the message then alter the signature by recovering
+$r$ and $H_r$ from $y_1$ using the client's public key in the same manner as during verification, then calculating the new
+\[y_2 = m_{new} \oplus H_r\]
+Alternately, if we don't have the signer's public key (which we should), we can do the following:
+\[y_{2_{new}} = m_{new} \oplus H_r = m_{new} \oplus m_{old} \oplus m_{old} \oplus H_r = m_{new} \oplus m_{old} \oplus y_{2_{old}}\]
+We can also create new messages rather than altering them by reusing previous values of $(y_1, y_2)$ or $r$ and $H_r$, as reuse is not checked for these.
+
+\subsection{Encrypted Responses}
+Most encrypted responses after the user is authenticated (i.e. \code{DEPOSIT}, \code{WITHDRAW}, and \code{FREEZE}) do not have a response.
+Nevertheless, we can alter the responses that do come through (e.g. \code{CHECK}). \\
+This operation is identical to the process for reading and altering requests, except that the signature should be left as \code{null}.
 
 \section{Key Generation}
 Session keys are generated using the following parameters:
@@ -237,14 +374,15 @@ Session keys are generated using the following parameters:
     \item \code{client\_nonce}: A random 64-bit prime number generated by the client and sent in the cleartext.
     \item \code{server\_nonce}: A random 64-bit prime number generated by the client and sent in the cleartext.
 \end{itemize}
-As discussed earlier, the usage of only prime nonces may pose a vulnerability due to it significantly decreasing the number of possible nonces. However, due to them being sent in cleartext, this may not be so useful. \\
-Also note that using a man-in-the-middle attack, the \code{premastersecret} can be retrieved, ???but as it was already discussed, we will not use that strategy in this cryptanalysis???maybe?. \\
+As discussed earlier, the usage of only prime nonces may pose a vulnerability due to it significantly
+decreasing the number of possible nonces. However, due to them being sent in cleartext, this may not be so useful. \\
+Also note that using a man-in-the-middle attack, the \code{premastersecret} can be retrieved,
+???but as it was already discussed, we will not use that strategy in this cryptanalysis???maybe?. \\
 \\
 \textbf{TODO: I BET THERE'S A LOT OF PROBABILITY AND MATH CRYPTANALYSIS HERE} \\
-notes: key both for rc5 and hmac (same key) is produced by hashing the concatenated binary strings (so "01010101...") of the premaster secret, server nonce, and client nonce
-then it is left shifted until it aligns with 8 bits. I think this means that the session key will be a multiple of 8 bits (so a full number of bytes) but the leftmost bit will always be 1, and any shifts will result in the rightmost bits being 0.
-
-\end{document}
-
+notes: key both for rc5 and hmac (same key) is produced by hashing the concatenated binary strings (so "01010101...")
+of the premaster secret, server nonce, and client nonce then it is left shifted until it aligns with 8 bits.
+I think this means that the session key will be a multiple of 8 bits (so a full number of bytes) but the leftmost
+bit will always be 1, and any shifts will result in the rightmost bits being 0.
 
 \end{document}
