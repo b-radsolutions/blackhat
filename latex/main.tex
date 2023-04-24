@@ -322,7 +322,10 @@ This is the attack; no one else can connect to the server. As soon as the connec
 This Man-in-the-Middle attack allows us to recover the entire session key.
 Due to the lack of authentication of the server, our script can pose to the client as the server,
 using a generated public key, then relay the content to the server.
-While the server does send a 'certificate,' this only provides an RSA public key with no means for it to be authenticated.
+While the server does send a 'certificate,' this only provides an RSA public key with no means for it to be authenticated. \\
+\\
+Additionally, even if there were a certificate authority, we are capable of forging digital signatures
+(as described \hyperref[sec:signaturebad]{below$_\downarrow$}), so we would be able to alter the server public keys nonetheless.
 
 In detail:
 \subsection{Session Handshake Phase}
