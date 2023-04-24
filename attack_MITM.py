@@ -21,8 +21,8 @@ while True:
     real_rsa_keys = None
 
     session_key = None
-    """# p, q, u, g, c
-    fake_paillier_keys = pallier.create_config()"""
+    # p, q, u, g, c
+    fake_paillier_keys = pallier.create_config()
     # p*q, g
     real_paillier_keys = None
 
@@ -88,11 +88,31 @@ while True:
             value = p_op.value
             # make any changes we want to data & value
             # ====
-            """
             if p_op.id == packet.ProtectedOperationIds.DEPOSIT:
-                # replace all deposits with $10
-                data = pallier.encrypt(*real_paillier_keys, 1000)
-            """
+                deposit_amt = pallier.decrypt(
+                    int(data), fake_paillier_keys[2], fake_paillier_keys[0], fake_paillier_keys[1])
+                print(f"Deposit amount: {deposit_amt}")
+
+                # we can change deposit_amt here
+                # print(f"Altered deposit amount: {deposit_amt}")
+
+                data = str(pallier.encrypt(
+                    real_paillier_keys[0], real_paillier_keys[1], deposit_amt))
+            elif p_op.id == packet.ProtectedOperationIds.WITHDRAW:
+                withdraw_amt = pallier.decrypt(
+                    int(data), fake_paillier_keys[2], fake_paillier_keys[0], fake_paillier_keys[1])
+                withdraw_amt = withdraw_amt - \
+                    fake_paillier_keys[0] * fake_paillier_keys[1]
+                print(f"Withdraw amount: {withdraw_amt}")
+
+                # we can change withdraw_amt here
+                # print(f"Altered withdraw amount: {withdraw_amt}")
+
+                withdraw_amt = fake_paillier_keys[0] * \
+                    fake_paillier_keys[1] - withdraw_amt
+                data = str(pallier.encrypt(
+                    real_paillier_keys[0], real_paillier_keys[1], withdraw_amt))
+
             # ====
             # Now we rebuild the signature and MAC
             new_p_op = packet.ProtectedOperation.construct(
@@ -106,7 +126,8 @@ while True:
                                                  'mac': new_mac})
             if op.signature is not None:
                 new_hash = sha.hash(new_encrypted_data) >> 32
-                r = rsa.rsa_decrypt(client_rsa_keys[1], client_rsa_keys[0], op.signature[0])
+                r = rsa.rsa_decrypt(
+                    client_rsa_keys[1], client_rsa_keys[0], op.signature[0])
                 H_r = sha.hashNC(bitset.from_number(r))
                 new_op.signature = (op.signature[0], H_r ^ new_hash)
             req = new_op.json().encode()
@@ -136,8 +157,8 @@ while True:
         elif req_obj["id"] == 1:
             n, g = resp.decode().split("|")
             real_paillier_keys = (int(n), int(g))
-            """resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
-            print(f"Altered: {resp}")"""
+            resp = f"{fake_paillier_keys[0]*fake_paillier_keys[1]}|{fake_paillier_keys[3]}".encode()
+            print(f"Altered: {resp}")
             # Can't do this because of client signature
         elif req_obj["id"] == 2:
             resp_obj = json.loads(resp)
